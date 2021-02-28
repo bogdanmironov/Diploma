@@ -31,7 +31,8 @@ model = tf.keras.models.Sequential(
 model.compile(
     optimizer = tf.optimizers.Adam(learning_rate=0.00012),
     loss = tf.keras.losses.mse,
-    metrics=['accuracy']
+    metrics=[tf.keras.metrics.AUC(),
+    tf.keras.metrics.BinaryAccuracy]
 )
 print('train data shape: ', train_data.shape)
 print('train labels shape ', train_labels.shape)
