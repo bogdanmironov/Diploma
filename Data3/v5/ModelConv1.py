@@ -1,5 +1,3 @@
-# To add a new cell, type '# %%'
-# To add a new markdown cell, type '# %% [markdown]'
 import tensorflow as tf
 from tensorflow import keras
 import numpy as np
@@ -7,7 +5,7 @@ import matplotlib.pyplot as plt
 import pickle
 import json
 import shutil
-
+import os
 
 import h5py
 
@@ -33,6 +31,7 @@ def train_model(hyperparameters, log_dir):
 
     my_callbacks = [
         tf.keras.callbacks.TensorBoard(log_dir=board_log),
+        tf.keras.callbacks.EarlyStopping('val_loss', patience=100, verbose=1, mode='min', restore_best_weights=True), #Restore best weights option
     ]
 
     with open(hparams_log, 'w') as hparam_file:
@@ -40,9 +39,12 @@ def train_model(hyperparameters, log_dir):
 
     model = tf.keras.models.Sequential(
         [
-            tf.keras.layers.Flatten(input_shape=(4, 1000)),
+            tf.keras.layers.Conv1D(128, 2, activation='relu', input_shape=(4, 1000)),
+            tf.keras.layers.Conv1D(64, 2, activation='relu', input_shape=(4, 1000)),
+            tf.keras.layers.Conv1D(10, 2, activation='relu', input_shape=(4, 1000)),
+            tf.keras.layers.Flatten(),
             tf.keras.layers.Dropout(hyperparameters['l0_dropout_rate']),
-            tf.keras.layers.Dense(hyperparameters['l1_hidden_units'], activation=tf.keras.activations.relu),
+            tf.keras.layers.Dense(hyperparameters['l1_hidden_units'], activation=tf.keras.activations.relu, kernel_regularizer='l1'),
             tf.keras.layers.Dropout(hyperparameters['l1_dropout_rate']),
             tf.keras.layers.Dense(1, activation=tf.keras.activations.sigmoid)
         ]
@@ -50,9 +52,12 @@ def train_model(hyperparameters, log_dir):
     with tf.device('/GPU:0'):
         model.compile(
             optimizer = tf.keras.optimizers.Adam(learning_rate=hyperparameters['learning_rate']),
+            # optimizer = tf.keras.optimizers.RMSprop(learning_rate=hyperparameters['learning_rate']),
             loss = 'binary_crossentropy',
-            metrics=[tf.keras.metrics.AUC(name='auc')]
+            metrics=['acc', tf.keras.metrics.AUC(name='auc')]
         )
+
+        print(model.summary())
 
         history = model.fit(train_data, train_binlabels,
                 epochs=hyperparameters['epochs'], 
@@ -88,6 +93,7 @@ def plot_and_save_loss(history, log_dir):
 
     plt.plot(epochs, history_loss, 'ko', label='Training loss')
     plt.plot(epochs, history_val_loss, 'b', label='Validation loss')
+    plt.ylim(0.0)
     plt.title('Training and validation loss')
     plt.legend()
 
@@ -95,9 +101,25 @@ def plot_and_save_loss(history, log_dir):
     pickle.dump(loss, open((log_dir + '/pickle/loss.fig.pickle'), 'wb'))
     plt.close(loss)
 
+def plot_and_save_accuracy(history, log_dir):
+    accuracy = plt.figure(2)
+    history_accuracy = history.history['acc']
+    history_val_accuracy = history.history['val_acc']
+    epochs = range(len(history_accuracy))
+
+    plt.plot(epochs, history_accuracy, 'ko', label='Training accuracy')
+    plt.plot(epochs, history_val_accuracy, 'b', label='Validation accuracy')
+    plt.ylim([0.0, 1.05])
+    plt.title('Training and validation accuracy')
+    plt.legend()
+
+    accuracy.savefig(log_dir + '/accuracy.pdf')
+    pickle.dump(accuracy, open((log_dir + '/pickle/accuracy.fig.pickle'), 'wb'))
+    plt.close(accuracy)
+
 
 def plot_and_save_auc(history, log_dir):
-    auc = plt.figure(2)
+    auc = plt.figure(3)
 
     history_auc = history.history['auc']
     history_val_auc = history.history['val_auc']
@@ -105,6 +127,7 @@ def plot_and_save_auc(history, log_dir):
 
     plt.plot(epochs, history_auc, 'ko', label='Training auc')
     plt.plot(epochs, history_val_auc, 'b', label='Validation auc')
+    plt.ylim([0.5, 1.05])
     plt.title('Training and validation auc')
     plt.ylim(0.46, 1.0)
     plt.legend()
@@ -119,24 +142,25 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve 
 
 
-# L0_DROPOUT_RATES = [0.0, 0.3, 0.6] #0.5
-# L1_DROPOUT_RATES = [0.0, 0.25, 0.5] #0.4
+L0_DROPOUT_RATES = [0.3] #0.5
+L1_DROPOUT_RATES = [0.25] #0.4
 # L1_HIDDEN_UNITS = [32, 254, 512] #128
 # BATCH_SIZE = [32, 64, 128, 254, 512]
 # LEARNING_RATE = [0.000001 ,0.000005, 0.000007] #0.000007
 
-L0_DROPOUT_RATES = [0.0]
-L1_DROPOUT_RATES = [0.0]
-L1_HIDDEN_UNITS = [8, 32]
+# L0_DROPOUT_RATES = [0.0]
+# L1_DROPOUT_RATES = [0.0]
+L1_HIDDEN_UNITS = [16]
 BATCH_SIZE = [32, 64, 128, 254, 512]
-LEARNING_RATE = [0.000010, 0.000007, 0.000005, 0.000003, 0.000001]
+LEARNING_RATE = [0.000003]
+# LEARNING_RATE = [0.000005]
 
 for l1_hidden_units in L1_HIDDEN_UNITS:
     for learning_rate in LEARNING_RATE:
         for l0_dropout_rate in L0_DROPOUT_RATES:
             for l1_dropout_rate in L1_DROPOUT_RATES:
                 # log_dir = './logs/1_layer_dropout_test_batch/' + 'l1hu' + str(l1_hidden_units) + '_l0dr' + str(l0_dropout_rate) + '_l1dr' + str(l1_dropout_rate) + 'lr' + str(learning_rate)
-                log_dir = './logs/1_layer_dropout_test_batch_lr/' + 'l1hu' + str(l1_hidden_units) + '_l0dr' + str(l0_dropout_rate) + '_l1dr' + str(l1_dropout_rate) + 'lr' + str(learning_rate)
+                log_dir = './logs2/1_layer_dropout_test_batch_lr/[kregl1]' + 'l1hu' + str(l1_hidden_units) + '_l0dr' + str(l0_dropout_rate) + '_l1dr' + str(l1_dropout_rate) + 'lr' + str(learning_rate)
                 
                 try:
                     shutil.rmtree(log_dir)
@@ -154,20 +178,22 @@ for l1_hidden_units in L1_HIDDEN_UNITS:
                     'l1_dropout_rate': l1_dropout_rate,
                     'l1_hidden_units': l1_hidden_units,
                     'learning_rate': learning_rate,
-                    'batch_size': BATCH_SIZE[2],
+                    'batch_size': BATCH_SIZE[3],
                     'epochs': 500,
                 }
 
                 model, history = train_model(hparams, log_dir)
 
-                acc, auc = model.evaluate(test_data, test_binlabels)
+                loss, auc, acc = model.evaluate(test_data, test_binlabels)
                 yhat = model.predict(test_data)
                 fpr, tpr, _ = roc_curve(test_binlabels, yhat)
                 roc_auc = roc_auc_score(test_binlabels, yhat)
 
                 plot_and_save_roc(fpr, tpr, log_dir)
                 plot_and_save_loss(history, log_dir)
+                plot_and_save_accuracy(history, log_dir)
                 plot_and_save_auc(history, log_dir)
+                model.save(log_dir + '/model')
 
 
 
