@@ -155,7 +155,7 @@ for optimizer in OPTIMIZERS:
 
             model, history = train_model(hparams, log_dir)
 
-            yhat = model.predict(test_data)
+            yhat = model.predict(test_data_T)
             fpr, tpr, _ = roc_curve(test_binlabels, yhat)
             roc_auc = roc_auc_score(test_binlabels, yhat)
 
