@@ -6,8 +6,15 @@ import pickle
 import json
 import shutil
 import os
+from tensorflow.keras.layers import MaxPooling1D, Dense, Dropout, Conv1D, Flatten
+from tensorflow.keras import regularizers
 
 import h5py
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+
 
 train_file = 'MA0035_4_m5_train.h5'
 test_file = 'MA0035_4_m5_test.h5'
@@ -24,6 +31,17 @@ val_binlabels = h5_train['binlabels'][-10000:]
 test_data = h5_test['data'][:]
 test_binlabels = h5_test['binlabels'][:]
 
+print(train_data.shape)
+train_data_T = np.transpose(train_data, axes=(0, 2, 1))
+print(train_data_T.shape)
+
+print(test_data.shape)
+test_data_T = np.transpose(test_data, axes=(0, 2, 1))
+print(test_data_T.shape)
+
+print(val_data.shape)
+val_data_T = np.transpose(val_data, axes=(0, 2, 1))
+print(val_data_T.shape)
 
 def train_model(hyperparameters, log_dir):
     board_log = log_dir + '/board'
@@ -31,7 +49,7 @@ def train_model(hyperparameters, log_dir):
 
     my_callbacks = [
         tf.keras.callbacks.TensorBoard(log_dir=board_log),
-        tf.keras.callbacks.EarlyStopping('val_loss', patience=100, verbose=1, mode='min', restore_best_weights=True), #Restore best weights option
+        tf.keras.callbacks.EarlyStopping('val_loss', patience=200, verbose=1, mode='min', restore_best_weights=True), #Restore best weights option
     ]
 
     with open(hparams_log, 'w') as hparam_file:
@@ -39,29 +57,27 @@ def train_model(hyperparameters, log_dir):
 
     model = tf.keras.models.Sequential(
         [
-            tf.keras.layers.Conv1D(128, 2, activation='relu', input_shape=(4, 1000)),
-            tf.keras.layers.Conv1D(64, 2, activation='relu', input_shape=(4, 1000)),
-            tf.keras.layers.Conv1D(10, 2, activation='relu', input_shape=(4, 1000)),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dropout(hyperparameters['l0_dropout_rate']),
-            tf.keras.layers.Dense(hyperparameters['l1_hidden_units'], activation=tf.keras.activations.relu, kernel_regularizer='l1'),
-            tf.keras.layers.Dropout(hyperparameters['l1_dropout_rate']),
-            tf.keras.layers.Dense(1, activation=tf.keras.activations.sigmoid)
+            Conv1D(320, 26, activation='relu', input_shape=(1000, 4), padding='valid'),
+            MaxPooling1D(13, strides=13),
+            Dropout(0.2),
+            Flatten(),
+            Dense(925, activation=tf.keras.activations.relu),
+            Dense(919, activation=tf.keras.activations.relu),
+            Dense(1, activation=tf.keras.activations.sigmoid)
         ]
     )
     with tf.device('/GPU:0'):
         model.compile(
             optimizer = tf.keras.optimizers.Adam(learning_rate=hyperparameters['learning_rate']),
-            # optimizer = tf.keras.optimizers.RMSprop(learning_rate=hyperparameters['learning_rate']),
             loss = 'binary_crossentropy',
             metrics=['acc', tf.keras.metrics.AUC(name='auc')]
         )
 
         print(model.summary())
 
-        history = model.fit(train_data, train_binlabels,
+        history = model.fit(train_data_T, train_binlabels,
                 epochs=hyperparameters['epochs'], 
-                validation_data=(val_data, val_binlabels),
+                validation_data=(val_data_T, val_binlabels),
                 batch_size=hyperparameters['batch_size'],
                 callbacks=my_callbacks)
 
@@ -142,7 +158,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve 
 
 
-L0_DROPOUT_RATES = [0.3] #0.5
+L0_DROPOUT_RATES = [0.0] #0.5
 L1_DROPOUT_RATES = [0.25] #0.4
 # L1_HIDDEN_UNITS = [32, 254, 512] #128
 # BATCH_SIZE = [32, 64, 128, 254, 512]
@@ -150,17 +166,16 @@ L1_DROPOUT_RATES = [0.25] #0.4
 
 # L0_DROPOUT_RATES = [0.0]
 # L1_DROPOUT_RATES = [0.0]
-L1_HIDDEN_UNITS = [16]
-BATCH_SIZE = [32, 64, 128, 254, 512]
+L1_HIDDEN_UNITS = [64]
+BATCH_SIZE = [32, 64, 128, 254, 512, 1024]
 LEARNING_RATE = [0.000003]
-# LEARNING_RATE = [0.000005]
 
 for l1_hidden_units in L1_HIDDEN_UNITS:
     for learning_rate in LEARNING_RATE:
         for l0_dropout_rate in L0_DROPOUT_RATES:
             for l1_dropout_rate in L1_DROPOUT_RATES:
                 # log_dir = './logs/1_layer_dropout_test_batch/' + 'l1hu' + str(l1_hidden_units) + '_l0dr' + str(l0_dropout_rate) + '_l1dr' + str(l1_dropout_rate) + 'lr' + str(learning_rate)
-                log_dir = './logs2/1_layer_dropout_test_batch_lr/[kregl1]' + 'l1hu' + str(l1_hidden_units) + '_l0dr' + str(l0_dropout_rate) + '_l1dr' + str(l1_dropout_rate) + 'lr' + str(learning_rate)
+                log_dir = './logs2/1_layer_dropout_test_batch_lr/[2]' + 'l1hu' + str(l1_hidden_units) + '_l0dr' + str(l0_dropout_rate) + '_l1dr' + str(l1_dropout_rate) + 'lr' + str(learning_rate)
                 
                 try:
                     shutil.rmtree(log_dir)
@@ -174,26 +189,34 @@ for l1_hidden_units in L1_HIDDEN_UNITS:
                     print(e)
 
                 hparams = {
+                    'c1_masks': 200,
+                    'c2_masks': 150,
+                    'c3_masks': 50,
+                    'c4_masks': 50,
+                    'c5_masks': 30,
                     'l0_dropout_rate': l0_dropout_rate,
                     'l1_dropout_rate': l1_dropout_rate,
                     'l1_hidden_units': l1_hidden_units,
                     'learning_rate': learning_rate,
                     'batch_size': BATCH_SIZE[3],
-                    'epochs': 500,
+                    'epochs': 1500,
                 }
 
                 model, history = train_model(hparams, log_dir)
 
-                loss, auc, acc = model.evaluate(test_data, test_binlabels)
+                model.evaluate(test_data_T, test_binlabels)
                 yhat = model.predict(test_data)
                 fpr, tpr, _ = roc_curve(test_binlabels, yhat)
                 roc_auc = roc_auc_score(test_binlabels, yhat)
 
+                print('saving')
                 plot_and_save_roc(fpr, tpr, log_dir)
                 plot_and_save_loss(history, log_dir)
                 plot_and_save_accuracy(history, log_dir)
                 plot_and_save_auc(history, log_dir)
                 model.save(log_dir + '/model')
+                print('saved')
+
 
 
 
