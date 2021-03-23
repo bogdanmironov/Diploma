@@ -123,15 +123,15 @@ def train_model(hyperparameters, log_dir):
     return model, history
 
 LEARNING_RATES = [
-    # 0.001,
-    # 0.0007, 0.00035, 0.0001,
-    # 0.00007, 0.000035,
-    0.00001,
-    0.000007, 0.0000035, 0.000001,
-    0.0000007, 0.00000035, 0.0000001,
+    0.001,
+    0.0007, 0.00035, 0.0001,
+    0.00007, 0.000035,
+    # 0.00001,
+    # 0.000007, 0.0000035, 0.000001,
+    # 0.0000007, 0.00000035, 0.0000001,
 ]
 
-OPTIMIZERS = ['adam', 'rmsprop']
+OPTIMIZERS = ['rmsprop']
 
 for optimizer in OPTIMIZERS:
     for learning_rate in LEARNING_RATES:
