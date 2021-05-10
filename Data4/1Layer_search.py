@@ -87,7 +87,7 @@ def train_model(hyperparameters, log_dir):
 
     my_callbacks = [
         TensorBoard(log_dir=board_log),
-        EarlyStopping('val_loss', patience=70)
+        EarlyStopping('val_loss', patience=35, mode='min')
     ]
 
     with open(hparams_log, 'w') as hparam_file:
@@ -101,7 +101,8 @@ def train_model(hyperparameters, log_dir):
     model = tf.keras.models.Sequential(
         [
             Flatten(input_shape=(1000, 4)),
-            Dense(hyperparameters['l1_hu'], activation=tf.keras.activations.relu),
+            Dropout(hyperparameters['l0_dr']),
+            Dense(hyperparameters['l1_hu'], activation=tf.keras.activations.relu, kernel_regularizer='l2'),
             Dropout(hyperparameters['l1_dr']),
             Dense(1, activation=tf.keras.activations.sigmoid),
         ]
@@ -123,51 +124,40 @@ def train_model(hyperparameters, log_dir):
 
     return model, history
 
-LEARNING_RATES = [
-    # 0.001,
-    # 0.0007, 0.00035, 0.0001,
-    # 0.00007, 
-
-    # 0.000035, 0.00001,
-    # 0.000007, 0.0000035, 0.000001, good for adam so-so for rms
-    0.000005
-    # 0.0000007, 0.0000005,
-    #  
-    # 0.0000001,
-]
-
 OPTIMIZERS = ['rmsprop', 'adam']
+learning_rate = 0.0000025
+# dr = [0.00, 0.10, 0.20, 0.30, 0.40, 0.45, 0.50, 0.55, 0.60]
+dr = [0.00]
 
 for optimizer in OPTIMIZERS:
-    for learning_rate in LEARNING_RATES:
-        for i in range(800, 1301, 100):
-            for j in range(30, 71, 20):
-                log_dir = 'log1layer_dr/' + str(optimizer) + '/lr='+ str(learning_rate) + '/hu=' + str(i) + '[' + str(j) + ']' 
+    for i in range(1000, 10000, 500):
+        for j in dr:
+            log_dir = 'logs/log1layer_l2v2/' + str(optimizer) + '/lr='+ str(learning_rate) + '/' + str(i) + '[' + str(j) + ']'
 
-                hparams = {
-                    'l1_hu': i,
-                    'l1_dr': j/100,
-                    # 'learning_rate': 0.000003,
-                    'learning_rate': learning_rate,
-                    'batch_size': 1024,
-                    'epochs': 800,
-                    'optimizer': optimizer,
-                }
+            hparams = {
+                'l0_dr': 0.1,
+                'l1_hu': i,
+                'l1_dr': j,
+                'learning_rate': learning_rate,
+                'batch_size': 1024,
+                'epochs': 1000,
+                'optimizer': optimizer,
+            }
 
-                try:
-                    os.makedirs(log_dir)
-                    os.makedirs(log_dir + '/pickle')
-                except OSError as e:
-                    print(e)
+            try:
+                os.makedirs(log_dir)
+                os.makedirs(log_dir + '/pickle')
+            except OSError as e:
+                print(e)
 
-                model, history = train_model(hparams, log_dir)
+            model, history = train_model(hparams, log_dir)
 
-                yhat = model.predict(test_data_T)
-                fpr, tpr, _ = roc_curve(test_binlabels, yhat)
-                roc_auc = roc_auc_score(test_binlabels, yhat)
+            yhat = model.predict(test_data_T)
+            fpr, tpr, _ = roc_curve(test_binlabels, yhat)
+            roc_auc = roc_auc_score(test_binlabels, yhat)
 
-                plot_and_save_roc(fpr, tpr, roc_auc, log_dir, i)
-                plot_and_save_loss(history, log_dir, i)
-                plot_and_save_auc(history, log_dir, i)
+            plot_and_save_roc(fpr, tpr, roc_auc, log_dir, i)
+            plot_and_save_loss(history, log_dir, i)
+            plot_and_save_auc(history, log_dir, i)
 
-        # model.save(log_dir + '/model')  #Tooh heavy for long logs
+        # model.save(log_dir + '/model')  #Too heavy for long logs
